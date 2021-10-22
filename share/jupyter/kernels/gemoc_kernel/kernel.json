@@ -1,7 +1,7 @@
 {
     "display_name": "gemoc_kernel",
     "argv": [
-        "/opt/anaconda/bin/gemoc_kernel",
+        "/usr/local/bin/gemoc_kernel",
         "-f",
         "{connection_file}"
     ],

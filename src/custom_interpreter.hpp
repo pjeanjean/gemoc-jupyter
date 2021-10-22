@@ -25,6 +25,11 @@ namespace custom
 
         void configure_impl() override;
 
+        void send_gemoc_request(std::string endpoint,
+			        const std::string& message,
+				struct string* response_body,
+	                        long* response_code);
+
         nl::json execute_request_impl(int execution_counter,
                                       const std::string& code,
                                       bool silent,

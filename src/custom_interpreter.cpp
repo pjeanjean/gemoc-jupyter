@@ -44,6 +44,33 @@ namespace custom
         return read_size;
     }
 
+    void custom_interpreter::send_gemoc_request(std::string endpoint,
+		                                const std::string& message,
+						struct string* response_body,
+						long* response_code) {
+	curl = curl_easy_init();
+
+	char url[30];
+	sprintf(url, "127.0.0.1:%d/%s", this->gemoc_port, endpoint.c_str());
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+
+	curl_easy_setopt(curl, CURLOPT_PUT, 1L);
+	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+	curl_easy_setopt(curl, CURLOPT_READDATA, &message);
+	curl_easy_setopt(curl, CURLOPT_READFUNCTION, readfunc);
+	curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, (curl_off_t) message.size());
+
+        init_string(response_body);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, response_body);
+	
+	curl_easy_perform(curl);
+
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, response_code);
+	
+	curl_easy_cleanup(curl);
+    }
+
     nl::json custom_interpreter::execute_request_impl(int execution_counter, // Typically the cell number
                                                       const std::string& code, // Code to execute
                                                       bool /*silent*/,
@@ -51,37 +78,22 @@ namespace custom
                                                       nl::json /*user_expressions*/,
                                                       bool /*allow_stdin*/)
     {
-	curl = curl_easy_init();
-
-	char url[30];
-	sprintf(url, "127.0.0.1:%d/interpret", this->gemoc_port);
-	curl_easy_setopt(curl, CURLOPT_URL, url);
-
-	curl_easy_setopt(curl, CURLOPT_PUT, 1L);
-	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
-	curl_easy_setopt(curl, CURLOPT_READDATA, &code);
-	curl_easy_setopt(curl, CURLOPT_READFUNCTION, readfunc);
-	curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, (curl_off_t) code.size());
-
-	struct string s;
-        init_string(&s);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
-	
-	curl_easy_perform(curl);
-
+	struct string response_body;
         long response_code;
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+	
+	this->send_gemoc_request("interpret", code, &response_body, &response_code);
 	
 	if (response_code == 400) {
-            publish_execution_error("Error", std::string(s.ptr), {});
+            publish_execution_error("Error", std::string(response_body.ptr), {});
 	} else {
             nl::json pub_data;
-            pub_data["text/plain"] = std::string(s.ptr);
+	    //*
+	    std::string str_data = std::string(response_body.ptr);
+	    std::string mimetype = str_data.substr(0, str_data.find("\n"));
+	    pub_data[mimetype] = str_data.substr(str_data.find("\n") + 1);
+	    //*/ pub_data["text/plain"] = std::string(response_body.ptr);
             publish_execution_result(execution_counter, std::move(pub_data), nl::json());
 	}
-
-	curl_easy_cleanup(curl);
 
         nl::json result;
         result["status"] = "ok";
@@ -106,30 +118,14 @@ namespace custom
     nl::json custom_interpreter::complete_request_impl(const std::string& code,
                                                        int cursor_pos)
     {
-	curl = curl_easy_init();
-
-	char url[30];
-	sprintf(url, "127.0.0.1:%d/complete", this->gemoc_port);
-	curl_easy_setopt(curl, CURLOPT_URL, url);
+	struct string response_body;
+        long response_code;
 
         std::string message = std::to_string(cursor_pos) + "|||" + code;
-
-	curl_easy_setopt(curl, CURLOPT_PUT, 1L);
-	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
-	curl_easy_setopt(curl, CURLOPT_READDATA, &message);
-	curl_easy_setopt(curl, CURLOPT_READFUNCTION, readfunc);
-	curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, (curl_off_t) message.size());
-
-	struct string s;
-        init_string(&s);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
 	
-	curl_easy_perform(curl);
+	this->send_gemoc_request("complete", message, &response_body, &response_code);
 
-        std::string received = std::string(s.ptr);
-
-	curl_easy_cleanup(curl);
+        std::string received = std::string(response_body.ptr);
 
         nl::json result;
 
@@ -194,17 +190,23 @@ namespace custom
     nl::json custom_interpreter::kernel_info_request_impl()
     {
         nl::json result;
-        result["implementation"] = "my_kernel";
+        result["implementation"] = "GEMOC Kernel";
         result["implementation_version"] = "0.1.0";
-        result["language_info"]["name"] = "python";
-        result["language_info"]["version"] = "3.7";
-        result["language_info"]["mimetype"] = "text/x-python";
-        result["language_info"]["file_extension"] = ".py";
+        result["language_info"]["name"] = "gemoc";
+        result["language_info"]["mimetype"] = "text/x-gemoc";
+        result["language_info"]["file_extension"] = ".xmi";
+        //result["language_info"]["name"] = "python";
+        //result["language_info"]["version"] = "3.7";
+        //result["language_info"]["mimetype"] = "text/x-python";
+        //result["language_info"]["file_extension"] = ".py";
         return result;
     }
 
     void custom_interpreter::shutdown_request_impl() {
-        std::cout << "Bye!!" << std::endl;
+	std::string message;
+	long response_code;
+	struct string response_body;
+	this->send_gemoc_request("reset", message, &response_body, &response_code);
     }
 
 }

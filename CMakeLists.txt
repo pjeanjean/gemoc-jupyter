@@ -14,15 +14,23 @@ configure_file (
     "${CMAKE_CURRENT_SOURCE_DIR}/share/jupyter/kernels/gemoc_kernel/kernel.json"
 )
 
+option(XEUS_STATIC_DEPENDENCIES "link statically with xeus dependencies" OFF)
+if (XEUS_STATIC_DEPENDENCIES)
+    set(xeus_target "xeus-static")
+else ()
+    set(xeus_target "xeus")
+endif ()
+
 # Dependencies
 # ============
 
 # Be sure to use recent versions
-set(xeus_REQUIRED_VERSION 0.19.1)
+set(xeus_REQUIRED_VERSION 1.0.4)
 set(cppzmq_REQUIRED_VERSION 4.3.0)
 
 find_package(xeus ${xeus_REQUIRED_VERSION} REQUIRED)
 find_package(cppzmq ${cppzmq_REQUIRED_VERSION} REQUIRED)
+find_package(Threads)
 
 # Flags
 # =====
@@ -52,7 +60,7 @@ set(MY_KERNEL_SRC
 add_executable(${EXECUTABLE_NAME} src/main.cpp ${MY_KERNEL_SRC} )
 find_package(CURL REQUIRED)
 
-target_link_libraries(${EXECUTABLE_NAME} PRIVATE xeus ${CURL_LIBRARIES})
+target_link_libraries(${EXECUTABLE_NAME} PRIVATE xeus Threads::Threads ${CURL_LIBRARIES})
 
 if (APPLE)
     set_target_properties(${EXECUTABLE_NAME} PROPERTIES
